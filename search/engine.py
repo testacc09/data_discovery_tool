@@ -51,15 +51,23 @@ class SearchEngine:
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(self.embeddings_cache, f, ensure_ascii=False, indent=2)
 
-    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def search(self, query: str, limit: int = 5, filters: Dict[str, Any] = None, **kwargs) -> List[Dict[str, Any]]:
         results = []
         if not query:
             return results
+            
+        if filters is None:
+            filters = {}
+            
+        target_source_id = filters.get("sourceId")
             
         query_emb = list(self.model.embed([query]))[0]
         query_lower = query.lower()
         
         for source_id, schemas in self.catalog.items():
+            if target_source_id and source_id != target_source_id:
+                continue
+                
             for schema in schemas:
                 table_name = schema["table_name"]
                 keyword_score = 0.0
