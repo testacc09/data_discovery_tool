@@ -58,10 +58,20 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="search",
-            description="Search for relevant tables or columns using natural language query",
+            description="Search for relevant tables, columns or records using natural language query with optional filters",
             inputSchema={
                 "type": "object",
-                "properties": {"query": {"type": "string"}},
+                "properties": {
+                    "query": {"type": "string", "description": "Natural language query keywords"},
+                    "limit": {"type": "integer", "description": "Max results to return", "default": 3},
+                    "filters": {
+                        "type": "object",
+                        "description": "Optional search facets/filters",
+                        "properties": {
+                            "sourceId": {"type": "string"}
+                        }
+                    }
+                },
                 "required": ["query"]
             }
         ),
@@ -95,19 +105,38 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 await search_engine.index_source(csv_conn)
             elif source_id.startswith("sqlite_"):
                 db_file = f"{source_id.replace('sqlite_', '')}.db"
-                conn = SQLiteConnector(source_id, os.path.join(base_data_dir, "databases", db_file))
+                db_path = os.path.join(base_data_dir, "databases", db_file)
+                if not os.path.exists(db_path):
+                    raise FileNotFoundError(f"Database file not found: {db_path}")
+                conn = SQLiteConnector(source_id, db_path)
                 await search_engine.index_source(conn)
             elif source_id.startswith("http_"):
                 json_file = f"{source_id.replace('http_', '')}.json"
                 abs_path = os.path.abspath(os.path.join(base_data_dir, "api_responses", json_file))
+                if not os.path.exists(abs_path):
+                    raise FileNotFoundError(f"API mock file not found: {abs_path}")
                 conn = HTTPAPIConnector(source_id, f"file://{abs_path}")
                 await search_engine.index_source(conn)
             return [types.TextContent(type="text", text=json.dumps({"status": "indexed", "sourceId": source_id}))]
         
         elif name == "search":
             query = arguments.get("query", "")
-            results = search_engine.search(query)
-            return [types.TextContent(type="text", text=json.dumps(results))]
+            limit = arguments.get("limit", 3)
+            filters = arguments.get("filters", {})
+            
+            raw_results = search_engine.search(query, limit=limit, filters=filters)
+            
+            formatted_results = []
+            for res in raw_results:
+                formatted_results.append({
+                    "type": res.get("type", "table"),
+                    "score": res.get("score", 1.0),
+                    "sourceId": res.get("sourceId") or res.get("source_id", "unknown"),
+                    "path": res.get("path", ""),
+                    "metadata": res.get("metadata", {}),
+                    "preview": res.get("preview", [])
+                })
+            return [types.TextContent(type="text", text=json.dumps(formatted_results))]
         
         elif name == "getSchema":
             source_id = arguments.get("sourceId")
