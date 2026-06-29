@@ -39,7 +39,7 @@ def run_evaluation():
         reciprocal_ranks.append(rr)
     mrr = sum(reciprocal_ranks) / len(reciprocal_ranks)
     print(f"Evaluation Results")
-    print(f"------------------")
+    print(f"-------------------------------------")
     print(f"Total Test Cases: {len(test_cases)}")
     print(f"Mean Reciprocal Rank (MRR): {mrr:.4f}")
 
